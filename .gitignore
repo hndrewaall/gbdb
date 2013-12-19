@@ -2,3 +2,4 @@
 *.sublime-project
 *.sublime-workspace
 test_loop
+test.log
