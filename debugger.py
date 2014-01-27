@@ -1,5 +1,64 @@
+import time
+
 from defines import *
-from clibs import ls_kernel, spawn, libc
+from clibs import ls_kernel, spawn, libc, middleware_c
+import middleware
+
+
+def exc_to_str(exc):
+    exc_dict = {1: "EXC_BAD_ACCESS",
+                2: "EXC_BAD_INSTRUCTION",
+                3: "EXC_ARITHMETIC",
+                4: "EXC_EMULATION",
+                5: "EXC_SOFTWARE",
+                6: "EXC_BREAKPOINT",
+                7: "EXC_SYSCALL",
+                8: "EXC_MACH_SYSCALL",
+                9: "EXC_RPC_ALERT",
+                10: "EXC_CRASH",
+                11: "EXC_RESOURCE"}
+    return exc_dict[exc]
+
+
+_exc_result = None
+
+
+def _exc_callback():
+    # print "Got exception! %s (%d)" % (exc_to_str(int(data)), data)
+    global _exc_result
+    get_result = middleware_c.get_result
+    get_result.restype = middleware_result
+    _exc_result = get_result()
+
+
+def basic_handler(event):
+    print event
+
+
+class DebugEvent:
+
+    def __init__(self, struct):
+        self.exception_port = struct.exception_port
+        self.thread = struct.thread
+        self.task = struct.task
+        self.exception = struct.exception
+        self.code = []
+        for i in range(struct.codeCnt):
+            self.code.append(struct.code[i])
+
+    def __str__(self):
+        string = "Debug event:\n"
+        string += "\tException: %s (%d)\n" % (exc_to_str(self.exception),
+                                              self.exception)
+        string += "\tCodes:"
+        for code in self.code:
+            string += " 0x%.08x" % code
+        string += "\n"
+        string += "\tException port: %d\n" % self.exception_port
+        string += "\tTask port: %d\n" % self.task
+        string += "\tThread port: %d\n" % self.thread
+
+        return string
 
 
 class Task:
@@ -7,6 +66,7 @@ class Task:
     def __init__(self, p, e=None):
         self.port = p
         self.eport = e
+        self.exc_handler = _exc_callback
 
     def info(self):
         task_port_struct = mach_port_t(self.port)
@@ -23,6 +83,11 @@ class Task:
         task_port_struct = mach_port_t(self.port)
         print "[*] Resuming task %d..." % self.port
         ls_kernel.task_resume(task_port_struct)
+        # try:
+        #     while True:
+        #         time.sleep(1)
+        # except KeyboardInterrupt:
+        #     self.suspend()
 
     def suspend(self):
         task_port_struct = mach_port_t(self.port)
@@ -69,10 +134,32 @@ class Task:
             print ("[--] Task %d already has an exception port (%d)!"
                    % (self.port, self.eport))
 
-    # def listen(self, timeout):
-    #     if self.eport is not None:
-    #         reply = macdll_reply_t()
-    #         ls_kernel.mach_msg(
+    def listen(self, timeout=None):
+        if self.eport is not None:
+            msg = macdll_msg_t()
+            _timeout = 0
+            if timeout is not None:
+                options = MACH_RCV_MSG | MACH_RCV_LARGE | MACH_RCV_TIMEOUT
+                _timeout = timeout
+            else:
+                options = MACH_RCV_MSG | MACH_RCV_LARGE
+
+            ret = MACH_RCV_TIMED_OUT
+            ret = ls_kernel.mach_msg(byref(msg.head),
+                                     options,
+                                     0,
+                                     sizeof(msg),
+                                     mach_port_t(self.eport),
+                                     _timeout,
+                                     MACH_PORT_NULL)
+            assert ret == MACH_MSG_SUCCESS
+
+            reply = macdll_reply_t()
+            middleware.set_callback(self.exc_handler)
+            middleware_c.mach_exc_server(byref(msg), byref(reply))
+            result = DebugEvent(_exc_result)
+            return result
+
 
 class Thread:
 
@@ -102,6 +189,9 @@ class Thread:
         thread_port_struct = mach_port_t(self.port)
         print "[*] Suspending thread %d..." % self.port
         ls_kernel.thread_suspend(thread_port_struct)
+
+    def get_state(self):
+        
 
 
 class TaskForPidException(Exception):
@@ -147,16 +237,6 @@ class Debugger:
 
     def __init__(self):
         self.process = None
-
-    # def wait(self):
-    #   try:
-    #       print "[*] Waiting for process %d..." % self.pid
-    #       ls_kernel.wait4(self.pid, None, None, None)
-    #   except KeyboardInterrupt:
-    #       print " [--] Interrupted!"
-
-    # def debug_wait(self):
-    #     print "[*] Listening for events on %d..." % self.exception_port
 
     def attach(self, pid):
         if self.process is None:

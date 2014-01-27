@@ -3,3 +3,5 @@
 *.sublime-workspace
 test_loop
 test.log
+*.so
+*.dSYM

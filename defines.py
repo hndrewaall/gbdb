@@ -20,7 +20,7 @@ natural_t = c_uint
 integer_t = c_int
 
 # mach/port.h
-mach_port_t             = c_void_p
+mach_port_t             = c_uint32
 
 MACH_PORT_RIGHT_SEND        = 0
 MACH_PORT_RIGHT_RECEIVE     = 1
@@ -30,9 +30,12 @@ MACH_PORT_RIGHT_DEAD_NAME   = 4
 MACH_PORT_RIGHT_LABELH      = 5
 MACH_PORT_RIGHT_NUMBER      = 6
 
+MACH_PORT_NULL = 0
+
 
 # mach/message.h
 
+mach_msg_type_number_t = natural_t
 mach_msg_bits_t = c_uint
 mach_msg_size_t = natural_t
 mach_msg_id_t = integer_t
@@ -51,6 +54,64 @@ mach_msg_timeout_t = natural_t
 class mach_msg_body_t(Structure):
     _fields_ = [("msgh_descriptor_count", mach_msg_size_t)]
 
+MACH_MSG_OPTION_NONE    = 0x00000000
+MACH_SEND_MSG       = 0x00000001
+MACH_RCV_MSG        = 0x00000002
+MACH_RCV_LARGE      = 0x00000004
+MACH_RCV_LARGE_IDENTITY = 0x00000008
+MACH_SEND_TIMEOUT   = 0x00000010
+MACH_SEND_INTERRUPT = 0x00000040
+MACH_SEND_NOTIFY    = 0x00000080
+MACH_SEND_ALWAYS    = 0x00010000
+MACH_SEND_TRAILER   = 0x00020000
+MACH_SEND_NOIMPORTANCE  = 0x00040000
+MACH_SEND_IMPORTANCE    = 0x00080000
+
+MACH_RCV_TIMEOUT    = 0x00000100
+MACH_RCV_NOTIFY     = 0x00000200
+MACH_RCV_INTERRUPT  = 0x00000400
+MACH_RCV_OVERWRITE  = 0x00001000
+
+MACH_MSG_SUCCESS        = 0x00000000
+MACH_MSG_MASK           = 0x00003e00
+MACH_MSG_IPC_SPACE      = 0x00002000
+MACH_MSG_VM_SPACE       = 0x00001000
+MACH_MSG_IPC_KERNEL     = 0x00000800
+MACH_MSG_VM_KERNEL      = 0x00000400
+
+MACH_SEND_IN_PROGRESS       = 0x10000001
+MACH_SEND_INVALID_DATA      = 0x10000002
+MACH_SEND_INVALID_DEST      = 0x10000003
+MACH_SEND_TIMED_OUT     = 0x10000004
+MACH_SEND_INTERRUPTED       = 0x10000007
+MACH_SEND_MSG_TOO_SMALL     = 0x10000008
+MACH_SEND_INVALID_REPLY     = 0x10000009
+MACH_SEND_INVALID_RIGHT     = 0x1000000a
+MACH_SEND_INVALID_NOTIFY    = 0x1000000b
+MACH_SEND_INVALID_MEMORY    = 0x1000000c
+MACH_SEND_NO_BUFFER     = 0x1000000d
+MACH_SEND_TOO_LARGE     = 0x1000000e
+MACH_SEND_INVALID_TYPE      = 0x1000000f
+MACH_SEND_INVALID_HEADER    = 0x10000010
+MACH_SEND_INVALID_TRAILER   = 0x10000011
+MACH_SEND_INVALID_RT_OOL_SIZE   = 0x10000015
+
+MACH_RCV_IN_PROGRESS        = 0x10004001
+MACH_RCV_INVALID_NAME       = 0x10004002
+MACH_RCV_TIMED_OUT      = 0x10004003
+MACH_RCV_TOO_LARGE      = 0x10004004
+MACH_RCV_INTERRUPTED        = 0x10004005
+MACH_RCV_PORT_CHANGED       = 0x10004006
+MACH_RCV_INVALID_NOTIFY     = 0x10004007
+MACH_RCV_INVALID_DATA       = 0x10004008
+MACH_RCV_PORT_DIED      = 0x10004009
+MACH_RCV_IN_SET         = 0x1000400a
+MACH_RCV_HEADER_ERROR       = 0x1000400b
+MACH_RCV_BODY_ERROR     = 0x1000400c
+MACH_RCV_INVALID_TYPE       = 0x1000400d
+MACH_RCV_SCATTER_SMALL      = 0x1000400e
+MACH_RCV_INVALID_TRAILER    = 0x1000400f
+MACH_RCV_IN_PROGRESS_TIMED      = 0x10004011
 
 # mach/thread_info.h
 THREAD_BASIC_INFO       = 3
@@ -110,6 +171,9 @@ class task_basic_info(Structure):
 
 # mach/exception_types.h
 exception_mask_t = c_uint
+exception_type_t = c_int
+exception_data_type_t = integer_t
+exception_data_t = POINTER(exception_data_type_t)
 
 EXC_BAD_ACCESS      = 1
 EXC_BAD_INSTRUCTION = 2
@@ -137,7 +201,7 @@ EXC_MASK_RESOURCE           = 1 << EXC_RESOURCE
 
 EXCEPTION_DEFAULT   = 1
 EXCEPTION_STATE     = 2
-EXCEPTION_STATE_ID  = 3
+EXCEPTION_STATE_IDENTITY  = 3
 
 MACH_EXCEPTION_CODES = 0x80000000
 
@@ -156,6 +220,28 @@ x86_DEBUG_STATE64       = 11
 x86_DEBUG_STATE         = 12
 THREAD_STATE_NONE       = 13
 
+class x86_thread_state64_t(Structure):
+    _fields_ = [("rax", c_uint64),
+                ("rbx", c_uint64),
+                ("rcx", c_uint64),
+                ("rdx", c_uint64),
+                ("rdi", c_uint64),
+                ("rsi", c_uint64),
+                ("rbp", c_uint64),
+                ("rsp", c_uint64),
+                ("r8", c_uint64),
+                ("r9", c_uint64),
+                ("r10", c_uint64),
+                ("r11", c_uint64),
+                ("r12", c_uint64),
+                ("r13", c_uint64),
+                ("r14", c_uint64),
+                ("r15", c_uint64),
+                ("rip", c_uint64),
+                ("rflags", c_uint64),
+                ("cs", c_uint64),
+                ("fs", c_uint64),
+                ("gs", c_uint64)]
 
 # macdll/Exception.c
 
@@ -165,4 +251,17 @@ class macdll_reply_t(Structure):
 
 class macdll_msg_t(Structure):
     _fields_ = [("head", mach_msg_header_t),
-                ("msgh_body", mach_msg_body_t)]
+                ("msgh_body", mach_msg_body_t),
+                ("data", (c_char * 1024))]
+
+# middleware.h
+
+class middleware_result(Structure):
+    _fields_ = [
+                ("exception_port", mach_port_t),
+                ("thread", mach_port_t),
+                ("task", mach_port_t),
+                ("exception", exception_type_t),
+                ("code", exception_data_t),
+                ("codeCnt", mach_msg_type_number_t),
+                ]

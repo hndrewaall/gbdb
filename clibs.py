@@ -40,3 +40,5 @@ spawn.restype = spawn_check
 
 
 libc = cdll.LoadLibrary(find_library("libc"))
+
+middleware_c = cdll.LoadLibrary(find_library("middleware"))
