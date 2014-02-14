@@ -52,8 +52,13 @@ class DebugEvent:
                                               self.exception)
         string += "\tCodes:"
         for code in self.code:
-            string += " 0x%.08x" % code
+            string += " 0x%.16x" % code
         string += "\n"
+        try:
+            string += "\t       %s at 0x%.16x\n" % (ret_dict[self.code[0]],
+                                           self.code[1])
+        except KeyError:
+            pass
         string += "\tException port: %d\n" % self.exception_port
         string += "\tTask port: %d\n" % self.task
         string += "\tThread port: %d\n" % self.thread
@@ -161,6 +166,43 @@ class Task:
             return result
 
 
+class Register:
+
+    def __init__(self, name, val):
+        self.name = name
+        self.val = val
+
+    def __str__(self):
+        return "%s: %s" % (self.name, hex(self.val)[:-1])
+
+    def __int__(self):
+        return self.val
+
+
+class ThreadState:
+
+    def __init__(self, state):
+        registers = [Register(tup[0], state.__getattribute__(tup[0]))
+                     for tup in state._fields_]
+        for reg in registers:
+            setattr(self, reg.name, reg)
+
+    def __str__(self):
+        string = ""
+        for reg in vars(self).values():
+            string += str(reg) + "\n"
+        string = string[:-1]
+        return string
+
+    def struct(self):
+        state_struct = x86_thread_state64_t()
+        registers = vars(self).values()
+        for reg in registers:
+            setattr(state_struct, reg.name, int(reg))
+
+        return state_struct
+
+
 class Thread:
 
     def __init__(self, p):
@@ -191,7 +233,19 @@ class Thread:
         ls_kernel.thread_suspend(thread_port_struct)
 
     def get_state(self):
-        
+        thread = mach_port_t(self.port)
+        flavor = x86_THREAD_STATE64
+        state = x86_thread_state64_t()
+        count = x86_THREAD_STATE64_COUNT
+        ls_kernel.thread_get_state(thread, flavor, byref(state), byref(count))
+        return ThreadState(state)
+
+    def set_state(self, state):
+        thread = mach_port_t(self.port)
+        flavor = x86_THREAD_STATE64
+        state = state.struct()
+        count = x86_THREAD_STATE64_COUNT
+        ls_kernel.thread_set_state(thread, flavor, byref(state), count)
 
 
 class TaskForPidException(Exception):
