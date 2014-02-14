@@ -1,4 +1,5 @@
 import time
+import threading
 
 from defines import *
 from clibs import ls_kernel, spawn, libc, middleware_c
@@ -20,19 +21,18 @@ def exc_to_str(exc):
     return exc_dict[exc]
 
 
-_exc_result = None
+exc_result = None
+handle_event = threading.Event()
+handle_event.clear()
 
 
 def _exc_callback():
     # print "Got exception! %s (%d)" % (exc_to_str(int(data)), data)
-    global _exc_result
+    global exc_result, handle_event
+    handle_event.wait()
     get_result = middleware_c.get_result
     get_result.restype = middleware_result
-    _exc_result = get_result()
-
-
-def basic_handler(event):
-    print event
+    exc_result = get_result()
 
 
 class DebugEvent:
@@ -56,7 +56,7 @@ class DebugEvent:
         string += "\n"
         try:
             string += "\t       %s at 0x%.16x\n" % (ret_dict[self.code[0]],
-                                           self.code[1])
+                                                    self.code[1])
         except KeyError:
             pass
         string += "\tException port: %d\n" % self.exception_port
@@ -66,12 +66,53 @@ class DebugEvent:
         return string
 
 
+class Listener(threading.Thread):
+
+    def __init__(self, eport, timeout=None):
+        threading.Thread.__init__(self)
+        self.daemon = True
+        self.eport = eport
+        self.timeout = timeout
+        self.exc_handler = _exc_callback
+
+    def handle(self):
+        global handle_event
+        handle_event.set()
+
+    def get_result(self):
+        return DebugEvent(exc_result)
+
+    def run(self):
+        if self.eport is not None:
+            msg = macdll_msg_t()
+            _timeout = 0
+            if self.timeout is not None:
+                options = MACH_RCV_MSG | MACH_RCV_LARGE | MACH_RCV_TIMEOUT
+                _timeout = self.timeout
+            else:
+                options = MACH_RCV_MSG | MACH_RCV_LARGE
+
+            ret = ls_kernel.mach_msg(byref(msg.head),
+                                     options,
+                                     0,
+                                     sizeof(msg),
+                                     mach_port_t(self.eport),
+                                     _timeout,
+                                     MACH_PORT_NULL)
+
+            reply = macdll_reply_t()
+            middleware.set_callback(self.exc_handler)
+            middleware_c.mach_exc_server(byref(msg), byref(reply))
+        else:
+            raise Exception
+
+
 class Task:
 
     def __init__(self, p, e=None):
         self.port = p
         self.eport = e
-        self.exc_handler = _exc_callback
+        self.old_exc_port = None
 
     def info(self):
         task_port_struct = mach_port_t(self.port)
@@ -128,42 +169,40 @@ class Task:
                                          byref(eport_struct))
             ls_kernel.mach_port_insert_right(me, eport_struct, eport_struct,
                                              MACH_MSG_TYPE_MAKE_SEND)
-            ls_kernel.task_set_exception_ports(task_port_struct, mask,
-                                               eport_struct,
-                                               EXCEPTION_DEFAULT |
-                                               MACH_EXCEPTION_CODES,
-                                               THREAD_STATE_NONE)
+            old_ports = old_exc_ports_t()
+
+            # hackity hack hack
+            count = c_uint()
+            count_p = pointer(count)
+            old_ports.count = count
+
+            ls_kernel.task_swap_exception_ports(task_port_struct, mask,
+                                                eport_struct,
+                                                EXCEPTION_DEFAULT |
+                                                MACH_EXCEPTION_CODES,
+                                                THREAD_STATE_NONE,
+                                                old_ports.masks,
+                                                count_p,
+                                                old_ports.ports,
+                                                old_ports.behaviors,
+                                                old_ports.flavors)
             print "[++] Exception port: %d" % eport_struct.value
+            self.old_exc_port = old_ports
             self.eport = eport_struct.value
         else:
             print ("[--] Task %d already has an exception port (%d)!"
                    % (self.port, self.eport))
 
-    def listen(self, timeout=None):
+    def detach(self):
         if self.eport is not None:
-            msg = macdll_msg_t()
-            _timeout = 0
-            if timeout is not None:
-                options = MACH_RCV_MSG | MACH_RCV_LARGE | MACH_RCV_TIMEOUT
-                _timeout = timeout
-            else:
-                options = MACH_RCV_MSG | MACH_RCV_LARGE
+            me = ls_kernel.mach_task_self()
+            task_port_struct = mach_port_t(self.port)
+            ls_kernel.mach_port_deallocate(me, self.eport)
 
-            ret = MACH_RCV_TIMED_OUT
-            ret = ls_kernel.mach_msg(byref(msg.head),
-                                     options,
-                                     0,
-                                     sizeof(msg),
-                                     mach_port_t(self.eport),
-                                     _timeout,
-                                     MACH_PORT_NULL)
-            assert ret == MACH_MSG_SUCCESS
-
-            reply = macdll_reply_t()
-            middleware.set_callback(self.exc_handler)
-            middleware_c.mach_exc_server(byref(msg), byref(reply))
-            result = DebugEvent(_exc_result)
-            return result
+    def listen(self, timeout=None):
+        listener = Listener(self.eport, timeout)
+        listener.start()
+        return listener
 
 
 class Register:

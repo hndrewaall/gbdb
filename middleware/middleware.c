@@ -1,4 +1,5 @@
 #include "middleware.h"
+#include <stdio.h>
 
 static middleware_result *mresult;
 
@@ -23,6 +24,8 @@ extern kern_return_t run_callback(
     PyObject_CallObject(callback, NULL);
     PyGILState_Release(gstate);
 
+
+    printf("Exiting outer callback...\n");
     return KERN_SUCCESS;
 }
 

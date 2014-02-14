@@ -120,6 +120,9 @@ ret_dict = {0: "KERN_SUCCESS",
                 3:  "KERN_NO_SPACE",
                 4:  "KERN_INVALID_ARGUMENT",
                 5:  "KERN_FAILURE",
+                15: "KERN_INVALID_NAME",
+                16: "KERN_INVALID_TASK",
+                17: "KERN_INVALID_RIGHT",
                 0x10000003: "MACH_SEND_INVALID_DEST",
                 -300: "MIG_TYPE_ERROR",
                 -301: "MIG_REPLY_MISMATCH",
@@ -187,6 +190,8 @@ exception_mask_t = c_uint
 exception_type_t = c_int
 exception_data_type_t = c_uint64
 exception_data_t = POINTER(exception_data_type_t)
+exception_behavior_t = c_int
+thread_state_flavor_t = c_int
 
 EXC_BAD_ACCESS      = 1
 EXC_BAD_INSTRUCTION = 2
@@ -264,6 +269,10 @@ class x86_exception_state64_t(Structure):
 
 x86_THREAD_STATE64_COUNT = c_uint(sizeof(x86_thread_state64_t) / sizeof(c_int))
 
+# mach/mach_types.h
+
+exception_handler_t = mach_port_t
+
 # macdll/Exception.c
 
 class macdll_reply_t(Structure):
@@ -274,6 +283,15 @@ class macdll_msg_t(Structure):
     _fields_ = [("head", mach_msg_header_t),
                 ("msgh_body", mach_msg_body_t),
                 ("data", (c_char * 1024))]
+
+MAX_EXCEPTION_PORTS = 16
+
+class old_exc_ports_t(Structure):
+    _fields_ = [("count", mach_msg_type_number_t),
+                ("masks", exception_mask_t * MAX_EXCEPTION_PORTS),
+                ("ports", exception_handler_t * MAX_EXCEPTION_PORTS),
+                ("behaviors", exception_behavior_t * MAX_EXCEPTION_PORTS),
+                ("flavors", thread_state_flavor_t * MAX_EXCEPTION_PORTS)]
 
 # middleware.h
 
