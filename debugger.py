@@ -32,7 +32,7 @@ def _exc_callback():
     handle_event.wait()
     get_result = middleware_c.get_result
     get_result.restype = middleware_result
-    exc_result = get_result()
+    exc_result = DebugEvent(get_result())
 
 
 class DebugEvent:
@@ -80,7 +80,8 @@ class Listener(threading.Thread):
         handle_event.set()
 
     def get_result(self):
-        return DebugEvent(exc_result)
+        global exc_result
+        return exc_result
 
     def run(self):
         if self.eport is not None:
