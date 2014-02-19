@@ -9,8 +9,10 @@ extern kern_return_t catch_mach_exception_raise(
     exception_data_t        code,
     mach_msg_type_number_t  codeCnt )
 {
-    return run_callback(exception_port, thread, task, exception, code,
+    run_callback(exception_port, thread, task, exception, code,
                         codeCnt );
+
+    return KERN_SUCCESS;
 }
 
 extern kern_return_t catch_mach_exception_raise_state(
@@ -24,6 +26,7 @@ extern kern_return_t catch_mach_exception_raise_state(
     thread_state_t          new_state,
     mach_msg_type_number_t *new_stateCnt )
 {
+    printf("wtfwtfwtf\n");
     return KERN_FAILURE;
 }
 
@@ -40,5 +43,6 @@ extern kern_return_t catch_mach_exception_raise_state_identity(
     thread_state_t          new_state,
     mach_msg_type_number_t *new_stateCnt )
 {
+    printf("wtfwtfwtf\n");
     return KERN_FAILURE;
 }

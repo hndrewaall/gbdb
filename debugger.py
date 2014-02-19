@@ -22,14 +22,12 @@ def exc_to_str(exc):
 
 
 exc_result = None
-handle_event = threading.Event()
-handle_event.clear()
 
 
 def _exc_callback():
-    # print "Got exception! %s (%d)" % (exc_to_str(int(data)), data)
-    global exc_result, handle_event
-    handle_event.wait()
+    print "Got exception!"
+    global exc_result
+    # handle_event.wait()
     get_result = middleware_c.get_result
     get_result.restype = middleware_result
     exc_result = DebugEvent(get_result())
@@ -74,10 +72,24 @@ class Listener(threading.Thread):
         self.eport = eport
         self.timeout = timeout
         self.exc_handler = _exc_callback
+        self.reply = None
 
     def handle(self):
-        global handle_event
-        handle_event.set()
+        # global handle_event
+        # handle_event.set()
+        options = MACH_SEND_MSG
+        _timeout = 0
+        if self.timeout is not None:
+            _timeout = self.timeout
+            options |= MACH_RCV_TIMEOUT
+
+        ls_kernel.mach_msg(byref(self.reply),
+                           options,
+                           sizeof(self.reply),
+                           0,
+                           MACH_PORT_NULL,
+                           _timeout,
+                           MACH_PORT_NULL)
 
     def get_result(self):
         global exc_result
@@ -86,24 +98,27 @@ class Listener(threading.Thread):
     def run(self):
         if self.eport is not None:
             msg = macdll_msg_t()
-            _timeout = 0
-            if self.timeout is not None:
-                options = MACH_RCV_MSG | MACH_RCV_LARGE | MACH_RCV_TIMEOUT
-                _timeout = self.timeout
-            else:
+            self.reply = macdll_reply_t()
+            while True:
                 options = MACH_RCV_MSG | MACH_RCV_LARGE
+                _timeout = 0
 
-            ret = ls_kernel.mach_msg(byref(msg.head),
-                                     options,
-                                     0,
-                                     sizeof(msg),
-                                     mach_port_t(self.eport),
-                                     _timeout,
-                                     MACH_PORT_NULL)
+                if self.timeout is not None:
+                    options |= MACH_RCV_TIMEOUT
+                    _timeout = self.timeout
+                print "waiting for a message..."
+                ls_kernel.mach_msg(byref(msg.head),
+                                   options,
+                                   0,
+                                   sizeof(msg),
+                                   mach_port_t(self.eport),
+                                   _timeout,
+                                   MACH_PORT_NULL)
+                print "got a message!"
 
-            reply = macdll_reply_t()
-            middleware.set_callback(self.exc_handler)
-            middleware_c.mach_exc_server(byref(msg), byref(reply))
+                middleware.set_callback(self.exc_handler)
+                middleware_c.mach_exc_server(byref(msg), byref(self.reply))
+                self.handle()
         else:
             raise Exception
 
@@ -165,6 +180,7 @@ class Task:
                                     EXC_MASK_BAD_INSTRUCTION |
                                     EXC_MASK_ARITHMETIC | EXC_MASK_SOFTWARE |
                                     EXC_MASK_BREAKPOINT | EXC_MASK_SYSCALL)
+            # mask = EXC_MASK_BAD_ACCESS;
             me = ls_kernel.mach_task_self()
             ls_kernel.mach_port_allocate(me, MACH_PORT_RIGHT_RECEIVE,
                                          byref(eport_struct))
@@ -181,7 +197,9 @@ class Task:
                                                 eport_struct,
                                                 EXCEPTION_DEFAULT |
                                                 MACH_EXCEPTION_CODES,
-                                                THREAD_STATE_NONE,
+                                                # EXCEPTION_DEFAULT,
+                                                # THREAD_STATE_NONE,
+                                                x86_THREAD_STATE,
                                                 old_ports.masks,
                                                 count_p,
                                                 old_ports.ports,
