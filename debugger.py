@@ -118,7 +118,7 @@ class Listener(threading.Thread):
 
                 middleware.set_callback(self.exc_handler)
                 middleware_c.mach_exc_server(byref(msg), byref(self.reply))
-                self.handle()
+                # self.handle()
         else:
             raise Exception
 
