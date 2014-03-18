@@ -220,15 +220,30 @@ class Task:
 
 class Register:
 
-    def __init__(self, name, val):
+    def __init__(self, name, val, size=32):
         self.name = name
         self.val = val
+        self.size = size
 
     def __str__(self):
         return "%s: %s" % (self.name, hex(self.val)[:-1])
 
     def __int__(self):
         return self.val
+
+    def __iadd__(self, other):
+        self.val += int(other) % 2**self.size
+        return self
+
+    def __isub__(self, other):
+        self.val -= int(other) % 2**self.size
+        return self
+
+    def __add__(self, other):
+        return (self.val + int(other)) % 2**self.size
+
+    def __sub__(self, other):
+        return (self.val - int(other)) % 2**self.size
 
 
 class ThreadState:
