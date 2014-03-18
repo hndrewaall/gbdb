@@ -25,7 +25,7 @@ extern kern_return_t run_callback(
     PyGILState_Release(gstate);
 
 
-    printf("Exiting outer callback...\n");
+    // printf("Exiting outer callback...\n");
     return KERN_SUCCESS;
 }
 

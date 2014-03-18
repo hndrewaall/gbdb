@@ -113,7 +113,7 @@ MACH_RCV_SCATTER_SMALL      = 0x1000400e
 MACH_RCV_INVALID_TRAILER    = 0x1000400f
 MACH_RCV_IN_PROGRESS_TIMED      = 0x10004011
 
-# mach/kern_return.h, mig_errors.h
+# mach/kern_return.h, mig_errors.h, mach/message.h
 ret_dict = {0: "KERN_SUCCESS",
                 1:  "KERN_INVALID_ADDRESS",
                 2:  "KERN_PROTECTION_FAILURE",
@@ -124,6 +124,7 @@ ret_dict = {0: "KERN_SUCCESS",
                 16: "KERN_INVALID_TASK",
                 17: "KERN_INVALID_RIGHT",
                 0x10000003: "MACH_SEND_INVALID_DEST",
+                0x10000010: "MACH_SEND_INVALID_HEADER",
                 -300: "MIG_TYPE_ERROR",
                 -301: "MIG_REPLY_MISMATCH",
                 -302: "MIG_REMOTE_ERROR",
@@ -204,6 +205,7 @@ EXC_MACH_SYSCALL    = 8
 EXC_RPC_ALERT       = 9
 EXC_CRASH           = 10
 EXC_RESOURCE        = 11
+EXC_GUARD           = 12
 
 EXC_MASK_BAD_ACCESS         = 1 << EXC_BAD_ACCESS
 EXC_MASK_BAD_INSTRUCTION    = 1 << EXC_BAD_INSTRUCTION
@@ -216,6 +218,13 @@ EXC_MASK_MACH_SYSCALL       = 1 << EXC_MACH_SYSCALL
 EXC_MASK_RPC_ALERT          = 1 << EXC_RPC_ALERT
 EXC_MASK_CRASH              = 1 << EXC_CRASH
 EXC_MASK_RESOURCE           = 1 << EXC_RESOURCE
+EXC_MASK_GUARD              = 1 << EXC_GUARD
+
+EXC_MASK_ALL = (EXC_MASK_BAD_ACCESS | EXC_MASK_BAD_INSTRUCTION |
+                EXC_MASK_ARITHMETIC | EXC_MASK_EMULATION |
+                EXC_MASK_SOFTWARE | EXC_MASK_BREAKPOINT | EXC_MASK_SYSCALL |
+                EXC_MASK_MACH_SYSCALL | EXC_MASK_RPC_ALERT | EXC_MASK_CRASH |
+                EXC_MASK_RESOURCE | EXC_MASK_GUARD)
 
 EXCEPTION_DEFAULT   = 1
 EXCEPTION_STATE     = 2
@@ -261,7 +270,7 @@ class x86_thread_state64_t(Structure):
                 ("fs", c_uint64),
                 ("gs", c_uint64)]
 
-class x86_exception_state64_t(Structure):
+class x(Structure):
     _fields_ = [("trapno", c_uint16),
                 ("cpu", c_uint16),
                 ("err", c_uint32),
@@ -304,3 +313,24 @@ class middleware_result(Structure):
                 ("code", exception_data_t),
                 ("codeCnt", mach_msg_type_number_t),
                 ]
+
+# bsd/sys/ptrace.h
+
+PT_TRACE_ME = 0
+PT_READ_I   = 1
+PT_READ_D   = 2
+PT_READ_U   = 3
+PT_WRITE_I  = 4
+PT_WRITE_D  = 5
+PT_WRITE_U  = 6
+PT_CONTINUE = 7
+PT_KILL     = 8
+PT_STEP     = 9
+PT_ATTACH   = 10
+PT_DETACH   = 11
+PT_SIGEXC   = 12
+PT_THUPDATE = 13
+PT_ATTACHEXC    = 14
+PT_FORCEQUOTA   = 30
+PT_DENY_ATTACH  = 31
+PT_FIRSTMACH    = 32

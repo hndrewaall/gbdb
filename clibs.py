@@ -22,7 +22,6 @@ def kern_check(ret):
         raise KernException(ret)
     return ret
 
-
 _ls_kernel = cdll.LoadLibrary(find_library("ls_kernel"))
 ls_kernel = lambda: None
 
@@ -34,6 +33,7 @@ ls_kernel.task_threads = _ls_kernel.task_threads
 ls_kernel.mach_port_allocate = _ls_kernel.mach_port_allocate
 ls_kernel.mach_port_deallocate = _ls_kernel.mach_port_deallocate
 ls_kernel.mach_port_insert_right = _ls_kernel.mach_port_insert_right
+ls_kernel.task_get_exception_ports = _ls_kernel.task_get_exception_ports
 ls_kernel.task_set_exception_ports = _ls_kernel.task_set_exception_ports
 ls_kernel.task_swap_exception_ports = _ls_kernel.task_swap_exception_ports
 ls_kernel.mach_msg = _ls_kernel.mach_msg
@@ -44,6 +44,7 @@ ls_kernel.thread_get_state = _ls_kernel.thread_get_state
 ls_kernel.thread_set_state = _ls_kernel.thread_set_state
 ls_kernel.task_for_pid = _ls_kernel.task_for_pid
 ls_kernel.kill = _ls_kernel.kill
+ls_kernel.ptrace = _ls_kernel.ptrace
 
 for func in vars(ls_kernel).values():
     func.restype = kern_check

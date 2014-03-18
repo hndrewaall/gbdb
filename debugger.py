@@ -25,12 +25,12 @@ exc_result = None
 
 
 def _exc_callback():
-    print "Got exception!"
     global exc_result
     # handle_event.wait()
     get_result = middleware_c.get_result
     get_result.restype = middleware_result
     exc_result = DebugEvent(get_result())
+    print exc_result
 
 
 class DebugEvent:
@@ -106,7 +106,6 @@ class Listener(threading.Thread):
                 if self.timeout is not None:
                     options |= MACH_RCV_TIMEOUT
                     _timeout = self.timeout
-                print "waiting for a message..."
                 ls_kernel.mach_msg(byref(msg.head),
                                    options,
                                    0,
@@ -114,7 +113,6 @@ class Listener(threading.Thread):
                                    mach_port_t(self.eport),
                                    _timeout,
                                    MACH_PORT_NULL)
-                print "got a message!"
 
                 middleware.set_callback(self.exc_handler)
                 middleware_c.mach_exc_server(byref(msg), byref(self.reply))
@@ -125,9 +123,10 @@ class Listener(threading.Thread):
 
 class Task:
 
-    def __init__(self, p, e=None):
+    def __init__(self, p, process, e=None):
         self.port = p
         self.eport = e
+        self.process = process
         self.old_exc_port = None
 
     def info(self):
@@ -167,7 +166,7 @@ class Task:
                                byref(thread_count))
         threads = []
         for i in range(thread_count.value):
-            threads.append(Thread(thread_list[i]))
+            threads.append(Thread(thread_list[i], self))
 
         return threads
 
@@ -176,10 +175,7 @@ class Task:
             task_port_struct = mach_port_t(self.port)
             print "[*] Getting exception port on task %d..." % self.port
             eport_struct = mach_port_t()
-            mask = exception_mask_t(EXC_MASK_BAD_ACCESS |
-                                    EXC_MASK_BAD_INSTRUCTION |
-                                    EXC_MASK_ARITHMETIC | EXC_MASK_SOFTWARE |
-                                    EXC_MASK_BREAKPOINT | EXC_MASK_SYSCALL)
+            mask = exception_mask_t(EXC_MASK_ALL)
             # mask = EXC_MASK_BAD_ACCESS;
             me = ls_kernel.mach_task_self()
             ls_kernel.mach_port_allocate(me, MACH_PORT_RIGHT_RECEIVE,
@@ -191,20 +187,18 @@ class Task:
             # hackity hack hack
             count = c_uint()
             count_p = pointer(count)
-            old_ports.count = count
 
             ls_kernel.task_swap_exception_ports(task_port_struct, mask,
                                                 eport_struct,
                                                 EXCEPTION_DEFAULT |
                                                 MACH_EXCEPTION_CODES,
-                                                # EXCEPTION_DEFAULT,
-                                                # THREAD_STATE_NONE,
                                                 x86_THREAD_STATE,
                                                 old_ports.masks,
                                                 count_p,
                                                 old_ports.ports,
                                                 old_ports.behaviors,
                                                 old_ports.flavors)
+            old_ports.count = count_p.contents
             print "[++] Exception port: %d" % eport_struct.value
             self.old_exc_port = old_ports
             self.eport = eport_struct.value
@@ -263,8 +257,9 @@ class ThreadState:
 
 class Thread:
 
-    def __init__(self, p):
+    def __init__(self, p, task):
         self.port = p
+        self.task = task
 
     def info(self):
         p = mach_port_t(self.port)
@@ -289,6 +284,18 @@ class Thread:
         thread_port_struct = mach_port_t(self.port)
         print "[*] Suspending thread %d..." % self.port
         ls_kernel.thread_suspend(thread_port_struct)
+
+    def clear_signals(self):
+        thread_port_struct = mach_port_t(self.port)
+        # ls_kernel.ptrace(PT_ATTACH, self.task.process.pid, 0, 0)
+        # ls_kernel.ptrace(PT_ATTACHEXC, self.task.process.pid, 0, 0)
+        ls_kernel.ptrace(PT_THUPDATE, self.task.process.pid,
+                         thread_port_struct, 0)
+        # ls_kernel.ptrace(PT_SIGEXC, self.task.process.pid,
+                         # thread_port_struct, 0)
+        # ls_kernel.ptrace(PT_CONTINUE, self.task.process.pid, 1, 0)
+        # ls_kernel.ptrace(PT_ATTACH, self.task.process.pid, 0, 0)
+        # ls_kernel.ptrace(PT_DETACH, self.task.process.pid, 0, 0)
 
     def get_state(self):
         thread = mach_port_t(self.port)
@@ -330,7 +337,7 @@ class Process:
                                    byref(task_port_struct))
             if task_port_struct.value is not None:
                 print "[++] Task port: %d" % task_port_struct.value
-                self._task = Task(task_port_struct.value)
+                self._task = Task(task_port_struct.value, self)
             else:
                 raise TaskForPidException(self.pid)
         return self._task
@@ -344,6 +351,10 @@ class Process:
     def stop(self):
         ls_kernel.kill(self.pid, SIGSTOP)
 
+    def attach(self):
+        ls_kernel.ptrace(PT_ATTACHEXC, self.pid, 0, 0)
+        self.task().attach()
+
 
 class Debugger:
 
@@ -353,7 +364,7 @@ class Debugger:
     def attach(self, pid):
         if self.process is None:
             self.process = Process(pid)
-            self.process.task().attach()
+            self.process.attach()
         else:
             print ("[--] Already associated with process %d!"
                    % self.process.pid)
