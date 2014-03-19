@@ -19,6 +19,15 @@ SIGCONT                 = 19
 natural_t = c_uint
 integer_t = c_int
 
+vm_offset_t = natural_t
+
+mach_vm_address_t = c_uint64
+mach_vm_offset_t = c_uint64
+mach_vm_size_t = c_uint64
+vm_map_offset_t = c_uint64
+vm_map_address_t = c_uint64
+vm_map_size_t = c_uint64
+
 # mach/port.h
 mach_port_t             = c_uint32
 

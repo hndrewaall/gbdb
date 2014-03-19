@@ -128,6 +128,7 @@ class Task:
         self.eport = e
         self.process = process
         self.old_exc_port = None
+        self.breakpoints = []
 
     def info(self):
         task_port_struct = mach_port_t(self.port)
@@ -216,6 +217,37 @@ class Task:
         listener = Listener(self.eport, timeout)
         listener.start()
         return listener
+
+    def read_bytes(self, addr, length):
+        task = mach_port_t(self.port)
+        dest_addr = c_uint64()
+        read_size = mach_msg_type_number_t()
+        address = mach_vm_address_t(addr)
+        ls_kernel.mach_vm_read(task, address, length, byref(dest_addr),
+                               byref(read_size))
+        byte_struct = (c_ubyte * read_size.value)()
+        libc.memcpy(byte_struct, dest_addr, read_size)
+        byte_array = []
+        for byte in byte_struct:
+            byte_array.append(byte)
+        return byte_array
+
+    def write_bytes(self, addr, bytes):
+        task = mach_port_t(self.port)
+        address = mach_vm_address_t(addr)
+        print hex(address.value)
+        byte_struct = (c_ubyte * len(bytes))(*bytes)
+        ls_kernel.mach_vm_write(task, address, byte_struct, len(bytes))
+
+    def print_bytes(self, addr, length):
+        byte_array = self.read_bytes(addr, length)
+        byte_string = ''
+        for byte in byte_array:
+            byte_string += '%0.02X ' % byte
+        print byte_string[:-1]
+
+    def set_bp(self, addr):
+        self.breakpoints.append(Breakpoint(addr, self))
 
 
 class Register:
@@ -371,6 +403,18 @@ class Process:
         self.task().attach()
 
 
+class Breakpoint:
+
+    def __init__(self, addr, task):
+        self.addr = addr
+        self.task = task
+        self.orig_instr = task.read_bytes(addr, 1)[0]
+        task.write_bytes(addr, [0xcc])
+
+    def __del__(self):
+        task.write_bytes(addr, [self.orig_instr])
+
+
 class Debugger:
 
     def __init__(self):
@@ -413,3 +457,6 @@ class Debugger:
                % pid_struct.value)
 
         self.attach(pid_struct.value)
+
+    def set_bp(self, addr):
+        self.process.task.set_bp(addr)

@@ -45,6 +45,8 @@ ls_kernel.thread_set_state = _ls_kernel.thread_set_state
 ls_kernel.task_for_pid = _ls_kernel.task_for_pid
 ls_kernel.kill = _ls_kernel.kill
 ls_kernel.ptrace = _ls_kernel.ptrace
+ls_kernel.mach_vm_read = _ls_kernel.mach_vm_read
+ls_kernel.mach_vm_write = _ls_kernel.mach_vm_write
 
 for func in vars(ls_kernel).values():
     func.restype = kern_check
@@ -74,3 +76,4 @@ spawn.restype = spawn_check
 libc = cdll.LoadLibrary(find_library("libc"))
 
 middleware_c = cdll.LoadLibrary(find_library("middleware"))
+
