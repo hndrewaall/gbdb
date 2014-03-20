@@ -235,7 +235,6 @@ class Task:
     def write_bytes(self, addr, bytes):
         task = mach_port_t(self.port)
         address = mach_vm_address_t(addr)
-        print hex(address.value)
         byte_struct = (c_ubyte * len(bytes))(*bytes)
         ls_kernel.mach_vm_write(task, address, byte_struct, len(bytes))
 
@@ -450,10 +449,16 @@ class Breakpoint:
         self.addr = addr
         self.task = task
         self.orig_instr = task.read_bytes(addr, 1)[0]
+        prot = task.get_protection(addr)
+        task.set_protection(addr, prot + 'w')
         task.write_bytes(addr, [0xcc])
+        task.set_protection(addr, prot)
 
     def __del__(self):
+        prot = task.get_protection(addr)
+        task.set_protection(addr, prot + 'w')
         task.write_bytes(addr, [self.orig_instr])
+        task.set_protection(addr, prot)
 
 
 class Debugger:
