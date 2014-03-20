@@ -343,3 +343,48 @@ PT_ATTACHEXC    = 14
 PT_FORCEQUOTA   = 30
 PT_DENY_ATTACH  = 31
 PT_FIRSTMACH    = 32
+
+# i386/boolean.h
+
+boolean_t = c_uint
+
+# vm_prot.h
+
+vm_prot_t = c_int
+
+VM_PROT_NONE = 0
+VM_PROT_READ = 1
+VM_PROT_WRITE = 2
+VM_PROT_EXECUTE = 4
+
+# vm_inherit.h
+
+vm_inherit_t = c_uint
+
+# mach/vm_behavior.h
+
+vm_behavior_t = c_int
+
+# mach/memory_object_types.h
+
+memory_object_offset_t = c_ulonglong
+
+# vm_region.h
+
+vm_region_info_t = POINTER(c_int)
+vm_region_info_64_t = POINTER(c_int)
+
+VM_REGION_BASIC_INFO_64 = 9
+
+class vm_region_basic_info_64(Structure):
+    _fields_ = [
+                ("protection", vm_prot_t),
+                ("max_protection", vm_prot_t),
+                ("inheritance", vm_inherit_t),
+                ("shared", boolean_t),
+                ("reserved", boolean_t),
+                ("offset", memory_object_offset_t),
+                ("behavior", vm_behavior_t),
+                ("user_wired_count", c_ushort),
+                ]
+

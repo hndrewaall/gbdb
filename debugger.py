@@ -249,6 +249,47 @@ class Task:
     def set_bp(self, addr):
         self.breakpoints.append(Breakpoint(addr, self))
 
+    def get_protection(self, addr):
+        task = mach_port_t(self.port)
+        address = mach_vm_offset_t(addr)
+        size = mach_vm_size_t(1)
+        flavor = VM_REGION_BASIC_INFO_64
+        info_struct = vm_region_basic_info_64()
+        size = mach_msg_type_number_t(sizeof(vm_region_basic_info_64))
+        out = mach_port_t()
+
+        ls_kernel.mach_vm_region(task, byref(address), byref(size), flavor,
+                                 byref(info_struct), byref(size), byref(out))
+
+        prot_mask = info_struct.protection
+        prot_string = ''
+        if prot_mask & VM_PROT_READ:
+            prot_string += 'r'
+        if prot_mask & VM_PROT_WRITE:
+            prot_string += 'w'
+        if prot_mask & VM_PROT_EXECUTE:
+            prot_string += 'x'
+
+        return prot_string
+
+    def set_protection(self, addr, prot_string):
+        task = mach_port_t(self.port)
+        address = mach_vm_offset_t(addr)
+        size = mach_vm_size_t(1)
+        set_maximum = boolean_t(0)
+
+        prot_mask = 0
+        if 'r' in prot_string:
+            prot_mask |= VM_PROT_READ
+        if 'w' in prot_string:
+            prot_mask |= VM_PROT_WRITE
+        if 'x' in prot_string:
+            prot_mask |= VM_PROT_EXECUTE
+        new_protection = vm_prot_t(prot_mask)
+
+        ls_kernel.mach_vm_protect(task, address, size, set_maximum,
+                                  new_protection)
+
 
 class Register:
 
