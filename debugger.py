@@ -128,7 +128,8 @@ class Task:
         self.eport = e
         self.process = process
         self.old_exc_port = None
-        self.breakpoints = []
+        self.breakpoints = {}
+        self.listener = None
 
     def info(self):
         task_port_struct = mach_port_t(self.port)
@@ -216,7 +217,7 @@ class Task:
     def listen(self, timeout=None):
         listener = Listener(self.eport, timeout)
         listener.start()
-        return listener
+        self.listener = listener
 
     def read_bytes(self, addr, length):
         task = mach_port_t(self.port)
@@ -246,7 +247,7 @@ class Task:
         print byte_string[:-1]
 
     def set_bp(self, addr):
-        self.breakpoints.append(Breakpoint(addr, self))
+        self.breakpoints[addr] = Breakpoint(addr, self)
 
     def get_protection(self, addr):
         task = mach_port_t(self.port)
@@ -292,7 +293,7 @@ class Task:
 
 class Register:
 
-    def __init__(self, name, val, size=32):
+    def __init__(self, name, val, size=64):
         self.name = name
         self.val = val
         self.size = size
@@ -399,6 +400,38 @@ class Thread:
         count = x86_THREAD_STATE64_COUNT
         ls_kernel.thread_set_state(thread, flavor, byref(state), count)
 
+    def cont(self):
+        task = self.task
+        listener = task.listener
+        state = self.get_state()
+        curr_addr = state.rip - 1
+
+        try:
+            breakpoint = self.task.breakpoints[curr_addr]
+            task.print_bytes(breakpoint.addr, 1)
+            breakpoint.disable()
+            task.print_bytes(breakpoint.addr, 1)
+            state.rip -=1
+            self.set_state(state)
+
+            self.suspend()
+            listener.handle()
+            time.sleep(1)
+            self.clear_signals()
+            time.sleep(1)
+            listener.handle()
+
+            breakpoint.enable()
+            task.print_bytes(breakpoint.addr, 1)
+            self.resume()
+        except KeyError:
+            print "No breakpoint found, continuing anyway"
+            listener.handle()
+            time.sleep(1)
+            self.clear_signals()
+            time.sleep(1)
+            listener.handle()
+
 
 class TaskForPidException(Exception):
 
@@ -445,20 +478,26 @@ class Process:
 
 class Breakpoint:
 
+    def enable(self):
+        prot = self.task.get_protection(self.addr)
+        self.task.set_protection(self.addr, prot + 'w')
+        self.task.write_bytes(self.addr, [0xcc])
+        self.task.set_protection(self.addr, prot)
+
+    def disable(self):
+        prot = self.task.get_protection(self.addr)
+        self.task.set_protection(self.addr, prot + 'w')
+        self.task.write_bytes(self.addr, [self.orig_instr])
+        self.task.set_protection(self.addr, prot)
+
     def __init__(self, addr, task):
         self.addr = addr
         self.task = task
         self.orig_instr = task.read_bytes(addr, 1)[0]
-        prot = task.get_protection(addr)
-        task.set_protection(addr, prot + 'w')
-        task.write_bytes(addr, [0xcc])
-        task.set_protection(addr, prot)
+        self.enable()
 
     def __del__(self):
-        prot = task.get_protection(addr)
-        task.set_protection(addr, prot + 'w')
-        task.write_bytes(addr, [self.orig_instr])
-        task.set_protection(addr, prot)
+        self.disable()
 
 
 class Debugger:
