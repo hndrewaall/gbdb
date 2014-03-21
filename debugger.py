@@ -318,6 +318,17 @@ class Register:
     def __sub__(self, other):
         return (self.val - int(other)) % 2**self.size
 
+    def __iand__(self, other):
+        self.val &= int(other) % 2**self.size
+        return self
+
+    def __ior__(self, other):
+        self.val |= int(other) % 2**self.size
+        return self
+
+    def __invert__(self):
+        return ~self.val % 2**self.size
+
 
 class ThreadState:
 
@@ -411,7 +422,7 @@ class Thread:
             task.print_bytes(breakpoint.addr, 1)
             breakpoint.disable()
             task.print_bytes(breakpoint.addr, 1)
-            state.rip -=1
+            state.rip -= 1
             self.set_state(state)
 
             self.suspend()
@@ -431,6 +442,16 @@ class Thread:
             self.clear_signals()
             time.sleep(1)
             listener.handle()
+
+    def enable_ss(self):
+        state = self.get_state()
+        state.rflags |= 0x100
+        self.set_state(state)
+
+    def disable_ss(self):
+        state = self.get_state()
+        state.rflags &= ~0x100
+        self.set_state(state)
 
 
 class TaskForPidException(Exception):
