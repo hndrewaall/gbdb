@@ -1,5 +1,6 @@
 import time
 import threading
+import Queue
 
 from defines import *
 from clibs import ls_kernel, spawn, libc, middleware_c
@@ -21,16 +22,14 @@ def exc_to_str(exc):
     return exc_dict[exc]
 
 
-exc_result = None
+exc_queue = Queue.Queue()
 
 
 def _exc_callback():
-    global exc_result
-    # handle_event.wait()
+    global exc_queue
     get_result = middleware_c.get_result
     get_result.restype = middleware_result
-    exc_result = DebugEvent(get_result())
-    print exc_result
+    exc_queue.put(DebugEvent(get_result()))
 
 
 class DebugEvent:
@@ -75,8 +74,7 @@ class Listener(threading.Thread):
         self.reply = None
 
     def handle(self):
-        # global handle_event
-        # handle_event.set()
+        print "[*] Handling debug event..."
         options = MACH_SEND_MSG
         _timeout = 0
         if self.timeout is not None:
@@ -90,6 +88,13 @@ class Listener(threading.Thread):
                            MACH_PORT_NULL,
                            _timeout,
                            MACH_PORT_NULL)
+
+    def wait(self):
+        global exc_queue
+        print "[*] Waiting for debug event..."
+        event = exc_queue.get()
+        print "[++] Got debug event!"
+        return event
 
     def get_result(self):
         global exc_result
@@ -116,7 +121,6 @@ class Listener(threading.Thread):
 
                 middleware.set_callback(self.exc_handler)
                 middleware_c.mach_exc_server(byref(msg), byref(self.reply))
-                # self.handle()
         else:
             raise Exception
 
@@ -385,16 +389,10 @@ class Thread:
         ls_kernel.thread_suspend(thread_port_struct)
 
     def clear_signals(self):
+        print "[*] Clearing POSIX signals on thread %d..." % self.port
         thread_port_struct = mach_port_t(self.port)
-        # ls_kernel.ptrace(PT_ATTACH, self.task.process.pid, 0, 0)
-        # ls_kernel.ptrace(PT_ATTACHEXC, self.task.process.pid, 0, 0)
         ls_kernel.ptrace(PT_THUPDATE, self.task.process.pid,
                          thread_port_struct, 0)
-        # ls_kernel.ptrace(PT_SIGEXC, self.task.process.pid,
-                         # thread_port_struct, 0)
-        # ls_kernel.ptrace(PT_CONTINUE, self.task.process.pid, 1, 0)
-        # ls_kernel.ptrace(PT_ATTACH, self.task.process.pid, 0, 0)
-        # ls_kernel.ptrace(PT_DETACH, self.task.process.pid, 0, 0)
 
     def get_state(self):
         thread = mach_port_t(self.port)
@@ -414,41 +412,48 @@ class Thread:
     def cont(self):
         task = self.task
         listener = task.listener
+        listener.wait()
         state = self.get_state()
         curr_addr = state.rip - 1
 
         try:
             breakpoint = self.task.breakpoints[curr_addr]
-            task.print_bytes(breakpoint.addr, 1)
-            breakpoint.disable()
-            task.print_bytes(breakpoint.addr, 1)
-            state.rip -= 1
-            self.set_state(state)
-
-            self.suspend()
-            listener.handle()
-            time.sleep(1)
-            self.clear_signals()
-            time.sleep(1)
-            listener.handle()
-
-            breakpoint.enable()
-            task.print_bytes(breakpoint.addr, 1)
-            self.resume()
         except KeyError:
             print "No breakpoint found, continuing anyway"
             listener.handle()
-            time.sleep(1)
+            listener.wait()
             self.clear_signals()
-            time.sleep(1)
             listener.handle()
+        else:
+            breakpoint.disable()
+            listener.handle()
+            self.suspend()
+            listener.wait()
+            self.clear_signals()
+            listener.handle()
+            state = self.get_state()
+            state.rip -= 1
+            self.set_state(state)
+            self.enable_ss()
+            self.resume()
+            listener.wait()
+            listener.handle()
+            self.suspend()
+            listener.wait()
+            self.clear_signals()
+            listener.handle()
+            breakpoint.enable()
+            self.disable_ss()
+            self.resume()
 
     def enable_ss(self):
+        print "[*] Enabling single-step on thread %d..." % self.port
         state = self.get_state()
         state.rflags |= 0x100
         self.set_state(state)
 
     def disable_ss(self):
+        print "[*] Disabling single-step on thread %d..." % self.port
         state = self.get_state()
         state.rflags &= ~0x100
         self.set_state(state)
@@ -500,12 +505,14 @@ class Process:
 class Breakpoint:
 
     def enable(self):
+        print "Enabling breakpoint at 0x%0.16X..." % self.addr
         prot = self.task.get_protection(self.addr)
         self.task.set_protection(self.addr, prot + 'w')
         self.task.write_bytes(self.addr, [0xcc])
         self.task.set_protection(self.addr, prot)
 
     def disable(self):
+        print "Disabling breakpoint at 0x%0.16X..." % self.addr
         prot = self.task.get_protection(self.addr)
         self.task.set_protection(self.addr, prot + 'w')
         self.task.write_bytes(self.addr, [self.orig_instr])
