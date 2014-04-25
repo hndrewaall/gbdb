@@ -4,6 +4,7 @@ import Queue
 
 from defines import *
 from clibs import ls_kernel, spawn, libc, middleware_c
+from disassemble import decode_bytes
 import middleware
 
 
@@ -72,6 +73,7 @@ class Listener(threading.Thread):
         self.timeout = timeout
         self.exc_handler = _exc_callback
         self.reply = None
+        self.last_event = None
 
     def handle(self):
         print "[*] Handling debug event..."
@@ -94,11 +96,11 @@ class Listener(threading.Thread):
         print "[*] Waiting for debug event..."
         event = exc_queue.get()
         print "[++] Got debug event!"
+        self.last_event = event
         return event
 
     def get_result(self):
-        global exc_result
-        return exc_result
+        return self.last_event
 
     def run(self):
         if self.eport is not None:
@@ -166,7 +168,7 @@ class Task:
         thread_count = c_uint()
         task_port_struct = mach_port_t(self.port)
 
-        print "[*] Getting threads for task %d..." % self.port
+        # print "[*] Getting threads for task %d..." % self.port
 
         ls_kernel.task_threads(task_port_struct, byref(thread_list),
                                byref(thread_count))
@@ -573,3 +575,25 @@ class Debugger:
 
     def set_bp(self, addr):
         self.process.task.set_bp(addr)
+
+    def disassemble(self, addr=None, num_bytes=20):
+        task = self.process.task()
+        thread = task.threads()[0]
+        if addr is None:
+            addr = thread.get_state().rip.val
+        bytes = task.read_bytes(addr, num_bytes)
+        instructions = decode_bytes(bytes)
+        output = "\nDisassembling %d bytes at 0x%.08X:\n\n" % (num_bytes, addr)
+        output += ("Address             Instruction"
+                   "                             Bytes\n")
+        output += ("--------------      ------------------------------"
+                   "          ---------------\n")
+        curr_addr = addr
+        for inst in instructions:
+            text = inst[2].upper()
+            text = text.replace('0X', '0x')
+            output += "0x{0:<18X}{1:<40}{2}\n".format(curr_addr,
+                                                      text,
+                                                      inst[3].upper())
+            curr_addr += inst[1]
+        print output
